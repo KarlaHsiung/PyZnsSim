@@ -1,6 +1,6 @@
 # PyZnsSim - A Simple Zoned Namespaces (ZNS) Simulator
 
-PyZnsSim is an advanced ZNS simulator designed to enable users to configure various parameters such as the number of zones, blocks, and block sizes. It facilitates the calculation of file distribution across storage units.
+PyZnsSim is a simple ZNS simulator designed to enable users to test their algorithms with parameters including the number of zones, blocks, and block sizes. It facilitates the calculation of file chunk distribution and movement across storage units.
 
 ## Getting Started
 
