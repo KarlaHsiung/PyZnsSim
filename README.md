@@ -12,7 +12,7 @@ from zns_sim import ZnsFileSystem
 zns_fs = ZnsFileSystem(num_of_zones=2, num_of_blocks=1, block_size=100)
 ```
 
-Now let's write 3 files into the disk (File 0: 20 bytes, File 1: 130 bytes, File 2: 25 bytes)
+First, let's create and write 3 files into the disk (File 0: 20 bytes, File 1: 130 bytes, File 2: 25 bytes)
 ```Python
 zns_fs.createFile(20)
 zns_fs.createFile(130)
@@ -29,7 +29,7 @@ We can print the file chunks inside the Zone's blocks
 zns_fs.printSSD()
 ```
 the outputs are
-```
+```console
 SSD 0:
 Zone 0:
 Block 0:
