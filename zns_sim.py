@@ -16,12 +16,12 @@ class File:
 
 
 class FileChunk:
-    def __init__(self, inode, zone_id, id, chunck_size, lifeTime=0):
+    def __init__(self, inode, zone_id, id, chunck_size, life_time=0):
         self.inode = inode
         self.zone_id = zone_id
         self.id = id
         self.size = chunck_size
-        self.lifeTime = lifeTime
+        self.lifeTime = life_time
         self.isStale = False
 
     def markStale(self):
@@ -227,7 +227,8 @@ class SSD(LogiDataGroup):
 
 class ZnsFileSystem:
 
-    def __init__(self, num_of_zones=32, num_of_blocks=32768, block_size=4096):
+    def __init__(self, num_of_zones=32, num_of_blocks=32768, block_size=4096, verbose=False):
+        self.verbose = verbose
         self.zone_gc_threshold = 0
         self.gc_migrate_times = 0
         self.gc_zone_reset_times = 0
@@ -244,7 +245,9 @@ class ZnsFileSystem:
         if (data_written != file.size):
             print("Error! Cannot write all data! ", data_written, "/", file.size)
             return -2
-        print("File {} (size: {}) is created.".format(self.inode, size))
+        
+        if (self.verbose):
+            print("File {} (size: {}) is created.".format(self.inode, size))
 
         self.file_list.append(file)
         self.inode += 1
@@ -256,7 +259,9 @@ class ZnsFileSystem:
                 file.status = 'deleted'
                 for chunk in file.chunk_list:
                     chunk.markStale()
-                print("File " + str(inode) + "'s chunks are marked stale.")
+                
+                if (self.verbose):
+                    print("File " + str(inode) + "'s chunks are marked stale.")
                 # TODO: don't pop now, we use inode as index sometimes
                 # self.file_list.pop(i)
                 self.updateLifeTime();
@@ -286,7 +291,7 @@ class ZnsFileSystem:
         if zone_id > -1:
             # Trigger GC when total stale data exceed GC threshold
             if max_stale / zone.max_space < self.zone_gc_threshold:
-                return
+                return 0
 
             # Copy chunks
             zone_file_chunk_list = []
@@ -303,19 +308,24 @@ class ZnsFileSystem:
                     if file_chunk.size <= zone.updateRemainSpace():
                         self.moveOneChunk(file_chunk, src_zone_id=zone_id, dst_zone_id=zone.id)
                         self.gc_migrate_times += 1
-                        print("Chunk (", file_chunk.inode, ",", file_chunk.id, ") in zone ", zone_id, " is moved to zone " + str(i))
+                        if (self.verbose):
+                            print("Chunk (", file_chunk.inode, ",", file_chunk.id, ") in zone ", zone_id, " is moved to zone " + str(i))
                         break
 
                 if i == len(zone_list):
-                    print("FileChunk is too large! (inode, size) = (", file_chunk.inode, ",", file_chunk.size, ")")
-                    return
+                    print("Error! FileChunk is too large! (inode, size) = (", file_chunk.inode, ",", file_chunk.size, ")")
+                    return -1
 
             self.ssd.group_list[zone_id].resetState()
             self.ssd.updateRemainSpace()
             self.gc_zone_reset_times += 1
-            print("Zone " + str(zone_id) + " is reset.")
+            if (self.verbose):
+                print("Zone " + str(zone_id) + " is reset.")
 
-        print("Garbage collection done.")
+        if (self.verbose):
+            print("Garbage collection done.")
+        
+        return 1
 
     def garbageCollection(self):
         self.gcStaleGreedy();
