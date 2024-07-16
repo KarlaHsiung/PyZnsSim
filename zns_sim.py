@@ -144,6 +144,7 @@ class LogiDataUnit:
         if file_chunk.size > self.remain_space:
             return False
         self.file_chunk_list.append(file_chunk)
+        self.remain_space -= file_chunk.size
         return True
 
     def markStale(self, file: File):
@@ -305,7 +306,7 @@ class ZnsFileSystem:
                     if i == zone_id:
                         continue
 
-                    if file_chunk.size <= zone.updateRemainSpace():
+                    if file_chunk.size <= zone.remain_space:
                         self.moveOneChunk(file_chunk, src_zone_id=zone_id, dst_zone_id=zone.id)
                         self.gc_migrate_times += 1
                         if (self.verbose):
