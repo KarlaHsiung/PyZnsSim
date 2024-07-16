@@ -72,6 +72,7 @@ class LogiDataGroup:
     def writeChunk(self, file_chunk):
         for item in self.group_list:
             if item.writeChunk(file_chunk) == True:
+                self.remain_space -= file_chunk.size
                 return True
         return False
 
@@ -348,5 +349,5 @@ class ZnsFileSystem:
 
     def printGCStats(self):
         print("GC Stats:")
-        print("Migrate times:", self.gc_migrate_times)
+        print("Migration times:", self.gc_migrate_times)
         print("Zone reset times:", self.gc_zone_reset_times)
