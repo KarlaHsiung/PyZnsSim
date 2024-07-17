@@ -7,10 +7,10 @@ def test_write():
     zns_fs.createFile(400)
 
     # Check if the inode of Zone 1, Block 0's inode is 0
-    assert zns_fs.ssd.group_list[1].group_list[0].group_list[0].file_chunk_list[0].inode == 0
+    assert zns_fs.ssd.getFileChunk(1, 0, 0).inode == 0
 
     # Check if the inode of Zone 1, Block 1's inode is 1
-    assert zns_fs.ssd.group_list[1].group_list[1].group_list[0].file_chunk_list[0].inode == 1
+    assert zns_fs.ssd.getFileChunk(1, 1, 0).inode == 1
     assert zns_fs.ssd.remain_space == 100
 
 
@@ -37,8 +37,22 @@ def test_append():
     assert zns_fs.ssd.remain_space == 0
     assert zns_fs.file_list[0].size == 300
     # Check if the inode of Zone 1, Block 1's 2nd Chunk inode is 0, size is 50
-    assert zns_fs.ssd.group_list[1].group_list[1].group_list[0].file_chunk_list[1].inode == 0
-    assert zns_fs.ssd.group_list[1].group_list[1].group_list[0].file_chunk_list[1].size == 50
+    assert zns_fs.ssd.getFileChunk(1, 1, 1).inode == 0
+    assert zns_fs.ssd.getFileChunk(1, 1, 1).size == 50
+
+def test_delete_chunks():
+    zns_fs = ZnsFileSystem(num_of_zones=3, num_of_blocks=3, block_size=100, verbose=True)
+
+    zns_fs.createFile(400)
+    zns_fs.createFile(400)
+    zns_fs.deleteFileChunks(0, 1, 3)
+
+    # Check if the inode of Zone 0, Block 0's was marked as Staled
+    assert zns_fs.ssd.getFileChunk(0, 1, 0).is_stale == True
+    assert zns_fs.ssd.getFileChunk(0, 2, 0).is_stale == True
+    assert zns_fs.ssd.getFileChunk(1, 0, 0).is_stale == False
+    assert zns_fs.file_list[0].size == 200
+    assert zns_fs.ssd.remain_space == 100
 
 
 def test_gc_stale_greedy():

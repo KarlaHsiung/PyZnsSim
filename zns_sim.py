@@ -220,7 +220,9 @@ class SSD(LogiDataGroup):
         if data_size > self.remain_space:
             return -1
         return super().writeFile(file)
-    
+
+    def getFileChunk(self, zone_id, block_id, chunk_id):
+        return self.group_list[zone_id].group_list[block_id].group_list[0].file_chunk_list[chunk_id]
 
 class ZnsFileSystem:
 
@@ -251,29 +253,44 @@ class ZnsFileSystem:
         return file.inode
 
     def deleteFile(self, inode):
-        for file in self.file_list:
-            if file.inode == inode:
-                file.status = 'deleted'
-                for chunk in file.chunk_list:
-                    chunk.markStale()
-                
-                if (self.verbose):
-                    print("File " + str(inode) + "'s chunks are marked stale.")
-                # TODO: don't pop now, we use inode as index sometimes
-                # self.file_list.pop(i)
-                self.updateLifeTime()
-                break
+        if inode >= len(self.file_list):
+            print('Error! Unknown file inode.')
+            return -2
 
+        file = self.file_list[inode]
+        file.status = 'deleted'
+        for chunk in file.chunk_list:
+            chunk.markStale()
+        
+        if (self.verbose):
+            print("File " + str(inode) + "'s chunks are marked stale.")
+        # TODO: don't pop now, we use inode as index sometimes
+        # self.file_list.pop(i)
+        self.updateLifeTime()
+
+    def deleteFileChunks(self, inode, beg_id, end_id):
+        if inode >= len(self.file_list):
+            print('Error! Unknown file inode.')
+            return -2
+        
+        file = self.file_list[inode]
+        for i in range(beg_id, end_id):
+            file.chunk_list[i].markStale()
+            file.size -= file.chunk_list[i].size
+        del file.chunk_list[beg_id : end_id]
+            
+
+        
     def appendFile(self, inode, data_size):
+        if inode > len(self.file_list):
+            print('Error! Unknown file inode.')
+            return -2
         if data_size > self.ssd.remain_space:
             print('Error! Not enough space in SSD.')
             return -1
-        
-        for file in self.file_list:
-            if file.inode == inode:
-                file.size += data_size
-                self.ssd.appendFile(file, data_size)
-                break
+        file = self.file_list[inode]
+        file.size += data_size
+        self.ssd.appendFile(file, data_size)
         
         if (self.verbose):
             print("Data {} have been appended to File {}.".format(data_size, file.inode))
