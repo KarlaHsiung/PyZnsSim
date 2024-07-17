@@ -1,35 +1,32 @@
-import random
-
-# Zone Namespace SSD & File System simulator
+# Simple Zone Namespace SSD & File System simulator
 
 class File:
     def __init__(self, filesize, inode):
         self.size = filesize
-        self.dataWritten = 0
+        self.data_written = 0
         self.inode = inode
         self.status = 'created'
         self.chunk_list = []
 
     def addChunk(self, file_chunk):
         self.chunk_list.append(file_chunk)
-        self.dataWritten += file_chunk.size
 
 
 class FileChunk:
-    def __init__(self, inode, zone_id, id, chunck_size, life_time=0):
+    def __init__(self, inode, logi_unit, id, chunck_size, life_time=0):
         self.inode = inode
-        self.zone_id = zone_id
+        self.logi_unit = logi_unit # Pointer to the Logical data unit
         self.id = id
         self.size = chunck_size
-        self.lifeTime = life_time
-        self.isStale = False
+        self.life_time = life_time
+        self.is_stale = False
 
     def markStale(self):
-        self.isStale = True
-        self.lifeTime = 0
+        self.is_stale = True
+        self.life_time = 0
 
     def print(self):
-        print('iNode: {}, Chunk {}: size {}, isStale {}, life {}'.format(self.inode, self.id, self.size, self.isStale, self.lifeTime))
+        print('inode: {}, Chunk {}: size {}, is_stale {}, life {}'.format(self.inode, self.id, self.size, self.is_stale, self.life_time))
 
 
 class LogiDataGroup:
@@ -60,7 +57,7 @@ class LogiDataGroup:
 
     def writeFile(self, file: File):
         # print("writeFile() in ", self.name, self.id) # Debug
-        if file.dataWritten >= file.size:
+        if file.data_written >= file.size:
             return 0
         data_written = 0
         for item in self.group_list:
@@ -95,6 +92,7 @@ class LogiDataGroup:
         for item in self.group_list:
             item.print()
 
+
 class LogiDataUnit:
     def __init__(self, id, zone_id, block_id, max_size):
         self.id = id
@@ -117,13 +115,13 @@ class LogiDataUnit:
     def writeFile(self, file: File):
         ''' Debug
         print('writeFile() in LogiDataUnit, max_size=', self.max_size, ', remain=',self.remain_space)
-        print('Before: Data written', file.dataWritten, '/', file.size, '; ', end='')
+        print('Before: Data written', file.data_written, '/', file.size, '; ', end='')
         '''
         if self.remain_space == 0:
             return 0
-        if file.dataWritten >= file.size:
+        if file.data_written >= file.size:
             return 0
-        file_remain_size = file.size - file.dataWritten
+        file_remain_size = file.size - file.data_written
         data_written = 0
         if file_remain_size >= self.remain_space:
             data_written = self.remain_space
@@ -131,12 +129,13 @@ class LogiDataUnit:
         else:
             data_written = file_remain_size
             self.remain_space -= file_remain_size
-        new_chunk = FileChunk(file.inode, self.zone_id, len(file.chunk_list), data_written)
-        # addChunk will update file.dataWritten
+        new_chunk = FileChunk(file.inode, self, len(file.chunk_list), data_written)
+        # addChunk will update file.data_written
         file.addChunk(new_chunk)
+        file.data_written += data_written
         self.file_chunk_list.append(new_chunk)
 
-        # print('After: Data written', file.dataWritten, '/', file.size) # Debug
+        # print('After: Data written', file.data_written, '/', file.size) # Debug
         return data_written
 
     def writeChunk(self, file_chunk):
@@ -144,6 +143,7 @@ class LogiDataUnit:
             return False
         if file_chunk.size > self.remain_space:
             return False
+        file_chunk.logi_unit = self
         self.file_chunk_list.append(file_chunk)
         self.remain_space -= file_chunk.size
         return True
@@ -156,7 +156,7 @@ class LogiDataUnit:
     def getStaleSize(self):
         stale_size = 0
         for file_chunk in self.file_chunk_list:
-            if file_chunk.isStale:
+            if file_chunk.is_stale:
                 stale_size += file_chunk.size
         return stale_size
 
@@ -195,6 +195,7 @@ class Zone(LogiDataGroup):
         self.remain_space = self.updateRemainSpace()
         self.max_space = self.remain_space
 
+
 class SSD(LogiDataGroup):
     # Default number of zones is 32
     def __init__(self, id, num_of_zones=32, num_of_blocks=32768, block_size=4096):
@@ -213,19 +214,13 @@ class SSD(LogiDataGroup):
         if file.size > self.remain_space:
             #print("Error! Not enough space in ", self.name, ' Filesize: ', file.size, ', Remain: ', self.remain_space) #debug
             return -1
-
         return super().writeFile(file)
-    '''
-    def resetZones(self):
-        reset_times = 0
-        for zone in self.group_list:
-            if zone.getStaleSize() == zone.max_space:
-                print("Zone " + str(zone.id) + " is reset.")
-                reset_times += 1
-                zone.resetState()
-        self.updateRemainSpace()
-        return reset_times
-    '''
+    
+    def appendFile(self, file: File, data_size):
+        if data_size > self.remain_space:
+            return -1
+        return super().writeFile(file)
+    
 
 class ZnsFileSystem:
 
@@ -256,7 +251,7 @@ class ZnsFileSystem:
         return file.inode
 
     def deleteFile(self, inode):
-        for i, file in enumerate(self.file_list):
+        for file in self.file_list:
             if file.inode == inode:
                 file.status = 'deleted'
                 for chunk in file.chunk_list:
@@ -266,21 +261,39 @@ class ZnsFileSystem:
                     print("File " + str(inode) + "'s chunks are marked stale.")
                 # TODO: don't pop now, we use inode as index sometimes
                 # self.file_list.pop(i)
-                self.updateLifeTime();
+                self.updateLifeTime()
                 break
+
+    def appendFile(self, inode, data_size):
+        if data_size > self.ssd.remain_space:
+            print('Error! Not enough space in SSD.')
+            return -1
+        
+        for file in self.file_list:
+            if file.inode == inode:
+                file.size += data_size
+                self.ssd.appendFile(file, data_size)
+                break
+        
+        if (self.verbose):
+            print("Data {} have been appended to File {}.".format(data_size, file.inode))
+
+    def printDataWritten(self):
+        for file in self.file_list:
+            print('File {} => Size / DataWritten = {} / {}'.format(file.inode, file.size, file.data_written))
 
     def setZoneGCThreshold(self, threshold):
         self.zone_gc_threshold = threshold
 
     def moveOneChunk(self, file_chunk, src_zone_id, dst_zone_id):
-        # Copy
-        new_chunk = FileChunk(file_chunk.inode, dst_zone_id, file_chunk.id, file_chunk.size, file_chunk.lifeTime)
+        # Create a new FileChunk, and call Zone.writeChunk() to search a LogiDataUnit to save it
+        new_chunk = FileChunk(file_chunk.inode, None, file_chunk.id, file_chunk.size, file_chunk.life_time)
         self.file_list[file_chunk.inode].addChunk(new_chunk)
         self.ssd.group_list[dst_zone_id].writeChunk(new_chunk) # Zone list
         file_chunk.markStale()
 
     def gcStaleGreedy(self):
-        # Find the zone with max stale filechunk size
+        # Find the zone with max stale FileChunk size
         max_stale = 0
         zone_id = -1
         zone_list = self.ssd.group_list
@@ -299,7 +312,7 @@ class ZnsFileSystem:
             zone_file_chunk_list = []
             zone_list[zone_id].getFileChunkList(zone_file_chunk_list)
             for file_chunk in zone_file_chunk_list:
-                if file_chunk.isStale:
+                if file_chunk.is_stale:
                     continue
 
                 # Find a new space to copy the chunk
@@ -330,14 +343,14 @@ class ZnsFileSystem:
         return 1
 
     def garbageCollection(self):
-        self.gcStaleGreedy();
+        self.gcStaleGreedy()
 
     def updateLifeTime(self):
         for file in self.file_list:
             if file.status == 'deleted':
                 continue
             for chunk in file.chunk_list:
-                chunk.lifeTime += 1
+                chunk.life_time += 1
 
     def printFileChunks(self):
         for file in self.file_list:
