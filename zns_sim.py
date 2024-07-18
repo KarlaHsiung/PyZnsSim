@@ -11,6 +11,13 @@ class File:
     def addChunk(self, file_chunk):
         self.chunk_list.append(file_chunk)
 
+    def updateChunk(self, new_chunk):
+        for i in range(0, len(self.chunk_list)):
+            if self.chunk_list[i].id == new_chunk.id:
+                self.chunk_list.insert(i, new_chunk)
+                self.chunk_list.pop(i+1)
+                break
+
 
 class FileChunk:
     def __init__(self, inode, logi_unit, id, chunck_size, life_time=0):
@@ -224,7 +231,7 @@ class SSD(LogiDataGroup):
             self.zone_life_time_ratio.append(0)
 
     def writeFile(self, file: File):
-        if file.size > self.remain_space:
+        if file.size - file.data_written > self.remain_space:
             #print("Error! Not enough space in ", self.name, ' Filesize: ', file.size, ', Remain: ', self.remain_space) #debug
             return -1
         return super().writeFile(file)
@@ -232,10 +239,12 @@ class SSD(LogiDataGroup):
     def appendFile(self, file: File, data_size):
         if data_size > self.remain_space:
             return -1
-        return super().writeFile(file)
+        file.data_written = file.size
+        file.size += data_size
+        return self.writeFile(file)
     
     def writeFileToZone(self, file: File, zone_id):
-        if file.size > self.group_list[zone_id].remain_space:
+        if file.size - file.data_written > self.group_list[zone_id].remain_space:
             #print("Error! Not enough space in Zone ", zone_id, ' Filesize: ', file.size, ', Remain: ', self.group_list[zone_id].remaind_space) #debug
             return -1
         return self.group_list[zone_id].writeFile(file)
@@ -324,14 +333,13 @@ class ZnsFileSystem:
         file.data_written = file.size
             
     def appendFile(self, inode, data_size):
-        if inode > len(self.file_list):
+        if inode >= len(self.file_list):
             print('Error! Unknown file inode.')
             return -2
         if data_size > self.ssd.remain_space:
             print('Error! Not enough space in SSD.')
             return -1
         file = self.file_list[inode]
-        file.size += data_size
         self.ssd.appendFile(file, data_size)
         
         if (self.verbose):
@@ -354,10 +362,10 @@ class ZnsFileSystem:
     def moveOneChunk(self, file_chunk, src_zone_id, dst_zone_id):
         # Create a new FileChunk, and call Zone.writeChunk() to search a LogiDataUnit to save it
         new_chunk = FileChunk(file_chunk.inode, None, file_chunk.id, file_chunk.size, file_chunk.life_time)
-        self.file_list[file_chunk.inode].addChunk(new_chunk)
+        self.file_list[file_chunk.inode].updateChunk(new_chunk)
         self.ssd.group_list[dst_zone_id].writeChunk(new_chunk) # Zone list
         file_chunk.markStale()
-
+        
     def gcStaleGreedy(self):
         # Trigger GC when total stale data exceed GC threshold
         if (self.ssd.max_space - self.ssd.remain_space) / self.ssd.max_space <= self.gc_threshold:
@@ -425,6 +433,10 @@ class ZnsFileSystem:
 
     def printSSD(self):
         self.ssd.print()
+    
+    def printZoneRemainSpace(self):
+        for i, zone in enumerate(self.ssd.group_list):
+            print("Zone ", i, " Remain Space: ", zone.remain_space)
 
     def printGCStats(self):
         print("GC Stats:")
