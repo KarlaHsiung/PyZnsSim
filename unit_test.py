@@ -45,7 +45,8 @@ def test_delete_chunks():
 
     zns_fs.createFile(400)
     zns_fs.createFile(400)
-    zns_fs.deleteFileChunks(0, 1, 3)
+    zns_fs.deleteFileChunks(0, 1, 3) # Delete File 0's Chunk 1, Chunk 2
+    stale_size = zns_fs.ssd.getStaleSize()
 
     # Check if the inode of Zone 0, Block 0's was marked as Staled
     assert zns_fs.ssd.getFileChunk(0, 1, 0).is_stale == True
@@ -53,6 +54,23 @@ def test_delete_chunks():
     assert zns_fs.ssd.getFileChunk(1, 0, 0).is_stale == False
     assert zns_fs.file_list[0].size == 200
     assert zns_fs.ssd.remain_space == 100
+    assert stale_size == 200
+    
+def test_move_one_chunk():
+    zns_fs = ZnsFileSystem(num_of_zones=2, num_of_blocks=2, block_size=100, verbose=True)
+    zns_fs.createFile(250)
+    # Move Zone 0 Block 0's chunk to Zone 1 (shall be written to Block 1)
+    dst_zone_id = 1
+    file_chunk = zns_fs.ssd.getFileChunk(0, 0, 0)
+    zns_fs.moveOneChunk(file_chunk, 0, dst_zone_id)
+    org_chunk = zns_fs.ssd.getFileChunk(0, 0, 0)
+    new_chunk = zns_fs.ssd.getFileChunk(dst_zone_id, 1, 0)
+    
+    assert org_chunk.is_stale == True
+    assert new_chunk.is_stale == False
+    assert org_chunk.id == new_chunk.id
+    assert new_chunk.logi_unit.zone_id == dst_zone_id
+    assert zns_fs.file_list[0].chunk_list[0].logi_unit.zone_id == dst_zone_id
 
 
 def test_gc_stale_greedy():
