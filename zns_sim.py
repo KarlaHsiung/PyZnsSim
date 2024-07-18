@@ -86,6 +86,12 @@ class LogiDataGroup:
         for item in self.group_list:
             stale_size += item.getStaleSize()
         return stale_size
+    
+    def getLifeTime(self):
+        life_time = 0
+        for item in self.group_list:
+            life_time += item.getLifeTime()
+        return life_time
 
     def print(self):
         print('{} {}: '.format(self.name, self.id))
@@ -164,6 +170,12 @@ class LogiDataUnit:
         for file_chunk in self.file_chunk_list:
             file_chunk_list.append(file_chunk)
 
+    def getLifeTime(self):
+        life_time = 0
+        for file_chunk in self.file_chunk_list:
+            life_time += file_chunk.life_time
+        return life_time
+
     def print(self):
         for file_chunk in self.file_chunk_list:
             file_chunk.print()
@@ -206,9 +218,10 @@ class SSD(LogiDataGroup):
         self.block_size = block_size
         self.max_space = num_of_zones * num_of_blocks * block_size
         self.remain_space = self.max_space
-
+        self.zone_life_time_ratio = []
         for i in range(self.num_of_group):
             self.group_list.append(Zone(i, num_of_blocks, block_size))
+            self.zone_life_time_ratio.append(0)
 
     def writeFile(self, file: File):
         if file.size > self.remain_space:
@@ -226,6 +239,15 @@ class SSD(LogiDataGroup):
             #print("Error! Not enough space in Zone ", zone_id, ' Filesize: ', file.size, ', Remain: ', self.group_list[zone_id].remaind_space) #debug
             return -1
         return self.group_list[zone_id].writeFile(file)
+    
+    def updateZoneLifeTimeRatio(self):
+        for i, zone in enumerate(self.group_list):
+            zone_stale = zone.getStaleSize()
+            total_life_time = zone.max_space - zone_stale - zone.remain_space
+            if total_life_time > 0:
+                self.zone_life_time_ratio[i] = zone.getLifeTime()*self.block_size / total_life_time
+            else:
+                self.zone_life_time_ratio[i] = 0
 
     def getFileChunk(self, zone_id, block_id, chunk_id):
         return self.group_list[zone_id].group_list[block_id].group_list[0].file_chunk_list[chunk_id]
@@ -298,8 +320,6 @@ class ZnsFileSystem:
             file.size -= file.chunk_list[i].size
         del file.chunk_list[beg_id : end_id]
             
-
-        
     def appendFile(self, inode, data_size):
         if inode > len(self.file_list):
             print('Error! Unknown file inode.')

@@ -74,3 +74,14 @@ def test_gc_stale_greedy():
     assert zns_fs.gc_zone_reset_times == 2
     assert zns_fs.ssd.remain_space == 50
     assert stale_size == 40
+
+def test_life_time():
+    zns_fs = ZnsFileSystem(num_of_zones=2, num_of_blocks=2, block_size=100) 
+    zns_fs.createFile(100)
+    zns_fs.createFile(100)
+    zns_fs.createFile(200)
+    zns_fs.deleteFile(0)
+    zns_fs.ssd.updateZoneLifeTimeRatio()
+
+    assert zns_fs.ssd.zone_life_time_ratio[0] == 1
+    assert zns_fs.ssd.zone_life_time_ratio[1] == 1
