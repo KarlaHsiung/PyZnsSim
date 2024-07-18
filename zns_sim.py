@@ -256,7 +256,7 @@ class ZnsFileSystem:
 
     def __init__(self, num_of_zones=32, num_of_blocks=32768, block_size=4096, verbose=False):
         self.verbose = verbose
-        self.zone_gc_threshold = 0
+        self.gc_threshold = 0
         self.gc_migrate_times = 0
         self.gc_zone_reset_times = 0
         self.inode = 0
@@ -315,10 +315,13 @@ class ZnsFileSystem:
             return -2
         
         file = self.file_list[inode]
+        #print('deleteFileChunks: File {}, Chunks:{}'.format(inode, len(file.chunk_list)))
         for i in range(beg_id, end_id):
+            #print('deleteFileChunks() ', i)
             file.chunk_list[i].markStale()
             file.size -= file.chunk_list[i].size
         del file.chunk_list[beg_id : end_id]
+        file.data_written = file.size
             
     def appendFile(self, inode, data_size):
         if inode > len(self.file_list):
@@ -333,13 +336,20 @@ class ZnsFileSystem:
         
         if (self.verbose):
             print("Data {} have been appended to File {}.".format(data_size, file.inode))
+    
+    # Our updateFile() is to delete some file junks first, and append new data
+    def updateFile(self, inode, del_beg_id, del_end_id, new_data_size):
+        self.deleteFileChunks(inode, del_beg_id, del_end_id)
+        #print("Filesize after deleteFileChunks", self.file_list[inode].size)
+        self.updateLifeTime() # All other files alive life plus 1
+        ret = self.appendFile(inode, new_data_size)
 
     def printDataWritten(self):
         for file in self.file_list:
             print('File {} => Size / DataWritten = {} / {}'.format(file.inode, file.size, file.data_written))
 
-    def setZoneGCThreshold(self, threshold):
-        self.zone_gc_threshold = threshold
+    def setGCThreshold(self, threshold):
+        self.gc_threshold = threshold
 
     def moveOneChunk(self, file_chunk, src_zone_id, dst_zone_id):
         # Create a new FileChunk, and call Zone.writeChunk() to search a LogiDataUnit to save it
@@ -349,6 +359,10 @@ class ZnsFileSystem:
         file_chunk.markStale()
 
     def gcStaleGreedy(self):
+        # Trigger GC when total stale data exceed GC threshold
+        if (self.ssd.max_space - self.ssd.remain_space) / self.ssd.max_space <= self.gc_threshold:
+            return 0
+            
         # Find the zone with max stale FileChunk size
         max_stale = 0
         zone_id = -1
@@ -360,10 +374,6 @@ class ZnsFileSystem:
                 zone_id = i
 
         if zone_id > -1:
-            # Trigger GC when total stale data exceed GC threshold
-            if max_stale / zone.max_space < self.zone_gc_threshold:
-                return 0
-
             # Copy chunks
             zone_file_chunk_list = []
             zone_list[zone_id].getFileChunkList(zone_file_chunk_list)
