@@ -220,6 +220,12 @@ class SSD(LogiDataGroup):
         if data_size > self.remain_space:
             return -1
         return super().writeFile(file)
+    
+    def writeFileToZone(self, file: File, zone_id):
+        if file.size > self.group_list[zone_id].remain_space:
+            #print("Error! Not enough space in Zone ", zone_id, ' Filesize: ', file.size, ', Remain: ', self.group_list[zone_id].remaind_space) #debug
+            return -1
+        return self.group_list[zone_id].writeFile(file)
 
     def getFileChunk(self, zone_id, block_id, chunk_id):
         return self.group_list[zone_id].group_list[block_id].group_list[0].file_chunk_list[chunk_id]
@@ -247,6 +253,19 @@ class ZnsFileSystem:
         
         if (self.verbose):
             print("File {} (size: {}) is created.".format(self.inode, size))
+
+        self.file_list.append(file)
+        self.inode += 1
+        return file.inode
+    
+    def createFileOnZone(self, size, zone_id):
+        file = File(size, self.inode)
+        data_written = self.ssd.writeFileToZone(file, zone_id)
+        if (data_written == -1):
+            print("Error! Not enough space in SSD")
+            return -1
+        if (self.verbose):
+            print("File {} (size: {}) is created on Zone {}.".format(self.inode, size, zone_id))
 
         self.file_list.append(file)
         self.inode += 1
