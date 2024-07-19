@@ -105,3 +105,28 @@ def test_life_time():
 
     assert zns_fs.ssd.zone_life_time_ratio[0] == 1
     assert zns_fs.ssd.zone_life_time_ratio[1] == 1
+
+def test_hilife_case1():
+    zns_org = ZnsFileSystem(num_of_zones=3, num_of_blocks=25, block_size=100, verbose=False)
+
+    # Set GC threshold
+    zns_org.setGCThreshold(0.7)
+
+    zns_org.createFile(700) # File A
+    zns_org.createFileOnZone(1000, 0) # File B
+    zns_org.createFileOnZone(800, 1) # File C
+    zns_org.createFileOnZone(1500, 2) # File D
+    zns_org.printZoneRemainSpace()
+
+    zns_org.updateFile(1, 0, 10, 700) # Update File B
+    zns_org.updateFile(0, 0, 7, 1000) # Update File A
+    zns_org.garbageCollection()
+    zns_org.updateFile(0, 0, 10, 700) # Update File A
+    zns_org.updateFile(1, 0, 7, 1000) # Update File B
+    zns_org.garbageCollection()
+
+    assert zns_org.gc_migrate_times == 16
+    assert zns_org.gc_zone_reset_times == 2
+    assert zns_org.ssd.group_list[0].remain_space == 0
+    assert zns_org.ssd.group_list[1].remain_space == 2500
+    assert zns_org.ssd.group_list[2].remain_space == 1000

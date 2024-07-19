@@ -245,11 +245,12 @@ class SSD(LogiDataGroup):
     
     def writeFileToZone(self, file: File, zone_id, new_data_size):
         if new_data_size > self.group_list[zone_id].remain_space:
-            file.data_written = file.size
-            file.size += new_data_size
             #print("Error! Not enough space in Zone ", zone_id, ' Filesize: ', file.size, ', Remain: ', self.group_list[zone_id].remaind_space) #debug
             return -1
-        return self.group_list[zone_id].writeFile(file)
+        else:
+            file.data_written = file.size
+            file.size += new_data_size
+            return self.group_list[zone_id].writeFile(file)
     
     def updateZoneLifeTimeRatio(self):
         for i, zone in enumerate(self.group_list):
