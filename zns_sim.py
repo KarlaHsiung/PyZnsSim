@@ -270,6 +270,7 @@ class ZnsFileSystem:
         self.verbose = verbose
         self.gc_threshold = 0
         self.gc_migrate_times = 0
+        self.gc_migrate_size = 0
         self.gc_zone_reset_times = 0
         self.inode = 0
         self.file_list = []
@@ -343,17 +344,19 @@ class ZnsFileSystem:
             print('Error! Not enough space in SSD.')
             return -1
         file = self.file_list[inode]
-        self.ssd.appendFile(file, data_size)
+        ret = self.ssd.appendFile(file, data_size)
         
         if (self.verbose):
             print("Data {} have been appended to File {}.".format(data_size, file.inode))
+        return ret
     
     # Our updateFile() is to delete some file junks first, and append new data
     def updateFile(self, inode, del_beg_id, del_end_id, new_data_size):
         self.deleteFileChunks(inode, del_beg_id, del_end_id)
         #print("Filesize after deleteFileChunks", self.file_list[inode].size)
         self.updateLifeTime() # All other files alive life plus 1
-        ret = self.appendFile(inode, new_data_size)
+        if self.appendFile(inode, new_data_size) == -1:
+            print("Error! Not enough space. Failed to appendFile() in updateFile()!")
 
     def printDataWritten(self):
         for file in self.file_list:
@@ -374,7 +377,7 @@ class ZnsFileSystem:
                   .format(file_chunk.id, file_chunk.size, file_chunk.logi_unit.zone_id, dst_zone_id))
         
     def gcStaleGreedy(self):
-        # Trigger GC when total stale data exceed GC threshold
+        # Trigger GC when total data size exceeds GC threshold
         if (self.ssd.max_space - self.ssd.remain_space) / self.ssd.max_space <= self.gc_threshold:
             return 0
             
@@ -404,13 +407,10 @@ class ZnsFileSystem:
                     if file_chunk.size <= zone.remain_space:
                         self.moveOneChunk(file_chunk, src_zone_id=zone_id, dst_zone_id=zone.id)
                         self.gc_migrate_times += 1
+                        self.gc_migrate_size += file_chunk.size
                         if (self.verbose):
                             print("Chunk (", file_chunk.inode, ",", file_chunk.id, ") in zone ", zone_id, " is moved to zone " + str(i))
                         break
-
-                if i == len(zone_list):
-                    print("Error! FileChunk is too large! (inode, size) = (", file_chunk.inode, ",", file_chunk.size, ")")
-                    return -1
 
             self.ssd.group_list[zone_id].resetState()
             self.ssd.updateRemainSpace()
@@ -448,4 +448,5 @@ class ZnsFileSystem:
     def printGCStats(self):
         print("GC Stats:")
         print("Migration times:", self.gc_migrate_times)
+        print("Migration data size:", self.gc_migrate_size)
         print("Zone reset times:", self.gc_zone_reset_times)
