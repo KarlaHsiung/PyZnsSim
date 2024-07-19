@@ -39,6 +39,7 @@ def test_append():
     # Check if the inode of Zone 1, Block 1's 2nd Chunk inode is 0, size is 50
     assert zns_fs.ssd.getFileChunk(1, 1, 1).inode == 0
     assert zns_fs.ssd.getFileChunk(1, 1, 1).size == 50
+    assert zns_fs.ssd.updateRemainSpace() == zns_fs.ssd.remain_space
 
 def test_delete_chunks():
     zns_fs = ZnsFileSystem(num_of_zones=3, num_of_blocks=3, block_size=100, verbose=True)
@@ -71,7 +72,8 @@ def test_move_one_chunk():
     assert org_chunk.id == new_chunk.id
     assert new_chunk.logi_unit.zone_id == dst_zone_id
     assert zns_fs.file_list[0].chunk_list[0].logi_unit.zone_id == dst_zone_id
-
+    assert zns_fs.ssd.remain_space == 50
+    assert zns_fs.ssd.remain_space == zns_fs.ssd.updateRemainSpace()
 
 def test_gc_stale_greedy():
     zns_fs = ZnsFileSystem(num_of_zones=2, num_of_blocks=1, block_size=100) 

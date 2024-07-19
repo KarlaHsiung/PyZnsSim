@@ -243,8 +243,10 @@ class SSD(LogiDataGroup):
         file.size += data_size
         return self.writeFile(file)
     
-    def writeFileToZone(self, file: File, zone_id):
-        if file.size - file.data_written > self.group_list[zone_id].remain_space:
+    def writeFileToZone(self, file: File, zone_id, new_data_size):
+        if new_data_size > self.group_list[zone_id].remain_space:
+            file.data_written = file.size
+            file.size += new_data_size
             #print("Error! Not enough space in Zone ", zone_id, ' Filesize: ', file.size, ', Remain: ', self.group_list[zone_id].remaind_space) #debug
             return -1
         return self.group_list[zone_id].writeFile(file)
@@ -290,8 +292,8 @@ class ZnsFileSystem:
         return file.inode
     
     def createFileOnZone(self, size, zone_id):
-        file = File(size, self.inode)
-        data_written = self.ssd.writeFileToZone(file, zone_id)
+        file = File(0, self.inode)
+        data_written = self.ssd.writeFileToZone(file, zone_id, size)
         if (data_written == -1):
             print("Error! Not enough space in SSD")
             return -1
@@ -362,9 +364,13 @@ class ZnsFileSystem:
     def moveOneChunk(self, file_chunk, src_zone_id, dst_zone_id):
         # Create a new FileChunk, and call Zone.writeChunk() to search a LogiDataUnit to save it
         new_chunk = FileChunk(file_chunk.inode, None, file_chunk.id, file_chunk.size, file_chunk.life_time)
-        self.file_list[file_chunk.inode].updateChunk(new_chunk)
-        self.ssd.group_list[dst_zone_id].writeChunk(new_chunk) # Zone list
-        file_chunk.markStale()
+        if self.ssd.group_list[dst_zone_id].writeChunk(new_chunk) == True:
+            self.file_list[file_chunk.inode].updateChunk(new_chunk)
+            self.ssd.remain_space -= new_chunk.size    
+            file_chunk.markStale()
+        else:
+            print('Error! Cannot move chunk(id:{}, size:{}) from Zone {} to Zone {}'
+                  .format(file_chunk.id, file_chunk.size, file_chunk.logi_unit.zone_id, dst_zone_id))
         
     def gcStaleGreedy(self):
         # Trigger GC when total stale data exceed GC threshold
